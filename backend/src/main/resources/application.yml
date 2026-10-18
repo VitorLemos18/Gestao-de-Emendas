@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: emendas-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:15432/emendas}
+    username: ${DB_USER:emendas}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  session:
+    timeout: 8h
+    jdbc:
+      initialize-schema: never
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      fail-on-unknown-properties: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+  mvc:
+    problemdetails:
+      enabled: true
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8000}
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        name: EMENDAS_SESSION
+        http-only: true
+        secure: ${COOKIE_SECURE:false}
+        same-site: lax
+  tomcat:
+    max-http-form-post-size: 11MB
+    max-swallow-size: 11MB
+springdoc:
+  api-docs:
+    enabled: ${DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${DOCS_ENABLED:true}
+    path: /docs
+    csrf:
+      enabled: true
+      cookie-name: XSRF-TOKEN
+      header-name: X-CSRF-TOKEN
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+logging:
+  level:
+    org.springframework.security: WARN

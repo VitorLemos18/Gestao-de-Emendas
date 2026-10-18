@@ -1,0 +1,36 @@
+:host { display: block; }
+.app-frame { min-height: 100dvh; background: var(--app-surface); }
+.app-sidebar { width: 212px; border-right: 1px solid var(--app-line); background: var(--app-background); border-radius: 0; }
+.brand { display: block; padding: 35px 28px 34px; text-decoration: none; color: var(--app-text); }
+.brand-name { display: block; font-size: 29px; line-height: 1.2; font-weight: 600; letter-spacing: -.055em; }
+.brand-caption { display: block; margin-top: 5px; color: var(--app-muted); font-size: 12px; }
+.primary-nav { display: grid; gap: 4px; padding: 0 14px; }
+.nav-caption { padding: 0 14px 9px; font-size: 11px; font-weight: 500; letter-spacing: .035em; color: var(--app-muted); }
+.nav-caption-secondary { padding-top: 27px; }
+.primary-nav a { padding: 11px 14px; min-height: 42px; border-radius: 4px; color: var(--app-text); text-decoration: none; font-size: 13px; line-height: 20px; }
+.primary-nav a:hover { background: var(--app-tint); }
+.primary-nav a.active { color: var(--app-primary); background: var(--app-tint); font-weight: 500; box-shadow: inset 2px 0 var(--app-primary); }
+.sidebar-footer { margin: 70px 28px 24px; border-top: 1px solid var(--app-line); padding-top: 19px; color: var(--app-muted); font-size: 11px; line-height: 1.55; }
+.sidebar-footer strong { color: var(--app-text); font-weight: 500; }
+.sidebar-footer p { margin: 6px 0 0; }
+.app-topbar { min-height: 70px; padding: 0 32px; border-bottom: 1px solid var(--app-line); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.topbar-leading, .topbar-controls { display: flex; align-items: center; gap: 23px; }
+.workspace-name { font-size: 12px; color: var(--app-muted); }
+.year-control { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.year-control label { color: var(--app-muted); }
+.year-select { width: 80px; border: 1px solid var(--app-control); border-radius: 4px; padding: 8px 9px; font-size: 13px; background: var(--app-surface); }
+.profile-button { font-size: 12px; }
+.profile-button svg { margin-left: 8px; vertical-align: middle; }
+.profile-current { color: var(--app-muted); font-size: 12px; margin-left: 8px; }
+.preview-banner { min-height: 35px; padding: 8px 32px; display: flex; gap: 8px; align-items: center; color: var(--app-muted); font-size: 11px; background: var(--app-background); border-bottom: 1px solid var(--app-line); }
+.preview-dot { width: 5px; height: 5px; flex: 0 0 5px; background: var(--app-primary); border-radius: 50%; }
+.app-content { min-width: 0; outline: none; }
+.app-footer { margin: 8px 32px 0; padding: 19px 0 22px; border-top: 1px solid var(--app-line); font-size: 11px; color: var(--app-muted); }
+.loading-strip { padding: 8px 32px; border-bottom: 1px solid var(--app-line); color: var(--app-muted); background: var(--app-background); font-size: 12px; }
+.loading-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; color: var(--app-muted); background: var(--app-background); }
+.mobile-brand { font-size: 23px; font-weight: 600; letter-spacing: -.05em; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 1000; transform: translateY(-180%); background: var(--app-primary); color: white; padding: 12px 18px; border-radius: 4px; }
+.skip-link:focus { transform: translateY(0); }
+@media(max-width: 1100px) { .app-topbar { padding-inline: 24px; } .topbar-controls { gap: 10px; } .workspace-name { max-width: 200px; } }
+@media(max-width: 900px) { .app-topbar { min-height: 64px; padding-inline: 14px; } .topbar-leading { gap: 8px; } .preview-banner { padding-inline: 20px; } .app-footer { margin-inline: 20px; } }
+@media(max-width: 480px) { .topbar-controls { gap: 2px; } .year-control { gap: 5px; } .year-control label { display: none; } .year-select { width: 70px; } .profile-button { min-width: 0; padding-inline: 8px; } .profile-label { font-size: 11px; } .profile-button svg { display: none; } .preview-banner { font-size: 10px; padding-inline: 16px; } }

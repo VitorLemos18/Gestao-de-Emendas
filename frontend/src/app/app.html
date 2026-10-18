@@ -1,0 +1,67 @@
+@if (auth.currentUser() && !auth.currentUser()?.must_change_password && store.loaded()) {
+  <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
+  <mat-sidenav-container class="app-frame">
+    <mat-sidenav #drawer class="app-sidebar" [mode]="mobile() ? 'over' : 'side'"
+                 [opened]="!mobile()" [fixedInViewport]="true" aria-label="Navegação principal">
+      <a class="brand" routerLink="/" (click)="closeNav()">
+        <span class="brand-name">Emendas</span>
+        <span class="brand-caption">Gestão de recursos</span>
+      </a>
+      <nav class="primary-nav" aria-label="Principal">
+        <span class="nav-caption">Acompanhamento</span>
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="closeNav()">Visão geral</a>
+        <a routerLink="/parlamentares" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Parlamentares</a>
+        <a routerLink="/recebimentos" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Recebimentos</a>
+        <a routerLink="/saldos" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Saldos entre anos</a>
+        <span class="nav-caption nav-caption-secondary">Conferência</span>
+        <a routerLink="/historico" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Histórico</a>
+        @if (store.canExport()) {
+          <a routerLink="/exportacoes" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Exportações</a>
+        }
+        @if (store.isAdmin()) {
+          <span class="nav-caption nav-caption-secondary">Gestão</span>
+          <a routerLink="/usuarios" routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeNav()">Usuários e perfis</a>
+        }
+      </nav>
+      <div class="sidebar-footer">
+        <strong>{{ auth.currentUser()?.name }}</strong>
+        <p>{{ store.currentUser().role | roleLabel }}</p>
+      </div>
+    </mat-sidenav>
+
+    <mat-sidenav-content>
+      <header class="app-topbar">
+        <div class="topbar-leading">
+          @if (mobile()) {
+            <button mat-icon-button type="button" aria-label="Abrir navegação" (click)="drawer.toggle()">
+              <svg lucideMenu aria-hidden="true" [size]="20"></svg>
+            </button>
+            <span class="mobile-brand">Emendas</span>
+          } @else {
+            <span class="workspace-name">Controle de recebimentos e execução</span>
+          }
+        </div>
+        <div class="topbar-controls">
+          <div class="year-control">
+            <label id="year-label">Exercício</label>
+            <mat-select class="year-select" [value]="store.year()" (selectionChange)="store.year.set($event.value)"
+                        aria-labelledby="year-label" panelWidth="auto">
+              @for (year of years(); track year) { <mat-option [value]="year">{{ year }}</mat-option> }
+            </mat-select>
+          </div>
+          <span class="profile-label">{{ store.currentUser().role | roleLabel }}</span>
+          <button mat-button class="profile-button" type="button" (click)="logout()">Sair</button>
+        </div>
+      </header>
+      @if (store.loading()) { <div class="loading-strip" role="status">Carregando os dados do sistema…</div> }
+      <main id="main-content" class="app-content" tabindex="-1">
+        <router-outlet />
+      </main>
+      <footer class="app-footer">Acompanhamento de recebimentos, execução e saldos anuais.</footer>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+} @else if (auth.currentUser() && !auth.currentUser()?.must_change_password && store.loading()) {
+  <main class="loading-screen" role="status">Carregando os dados do sistema…</main>
+} @else {
+  <router-outlet />
+}
