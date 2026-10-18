@@ -1,0 +1,16 @@
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /workspace
+COPY . .
+RUN chmod +x mvnw && ./mvnw -B -DskipTests package
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system emendas \
+    && useradd --system --gid emendas --home-dir /app emendas
+COPY --from=build /workspace/target/emendas-backend-0.2.0.jar /app/app.jar
+USER emendas
+EXPOSE 8000
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -1,0 +1,65 @@
+name: gestao-emendas
+
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: emendas
+      POSTGRES_USER: emendas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Configure DB_PASSWORD no arquivo .env}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emendas -d emendas"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    environment:
+      DB_URL: jdbc:postgresql://database:5432/emendas
+      DB_USER: emendas
+      DB_PASSWORD: ${DB_PASSWORD:?Configure DB_PASSWORD no arquivo .env}
+      SERVER_ADDRESS: 0.0.0.0
+      PORT: 8000
+      COOKIE_SECURE: "true"
+      DOCS_ENABLED: "false"
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administrador}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65 -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    mem_limit: 640m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  database:
