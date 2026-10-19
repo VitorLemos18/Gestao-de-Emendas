@@ -65,11 +65,32 @@ Com o certificado e os serviços saudáveis, a interface ficará em `https://45.
 
 ## Portainer e homologação
 
-O Portainer deve ficar acessível somente por túnel SSH, sem publicar a porta administrativa na internet. A definição versionada está em `infra/portainer/compose.yml`; antes de iniciá-la, crie `/opt/portainer/admin-password-hash` com um hash bcrypt da senha inicial do administrador e permissão `600`. Cadastre duas stacks Git independentes, ambas apontando para a branch `main` deste repositório:
+O Portainer deve ficar acessível somente por túnel SSH, sem publicar a porta administrativa na internet. A definição versionada está em `infra/portainer/compose.yml`. No servidor, gere o arquivo de hash da senha inicial e inicie o Portainer:
+
+```bash
+sudo apt-get install -y apache2-utils
+sudo install -d -m 755 /opt/portainer
+sudo -i
+read -rsp 'Senha inicial do Portainer: ' PORTAINER_PASSWORD; echo
+htpasswd -nbB -C 12 admin "$PORTAINER_PASSWORD" | cut -d: -f2 | sed 's/^\$2y\$/\$2a\$/' > /opt/portainer/admin-password-hash
+chmod 600 /opt/portainer/admin-password-hash
+cd /opt/gestao-emendas
+docker compose -f infra/portainer/compose.yml up -d
+```
+
+Cadastre duas stacks Git independentes, ambas apontando para a branch `main` deste repositório. Em **Stacks > Add stack > Git repository**, use a URL do GitHub, a referência `refs/heads/main`, o caminho do Compose indicado abaixo e as variáveis da própria stack:
 
 - **Produção**: arquivo `compose.production.yml`, URL `https://45.39.210.205/`, banco e volume `database` próprios.
 - **Homologação**: arquivo `compose.homolog.yml`, URL `https://45.39.210.205:8443/`, banco e volume `database_homolog` próprios.
 
 Configure `DB_PASSWORD`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME` e `BOOTSTRAP_ADMIN_PASSWORD` separadamente em cada stack. Nunca reutilize senha de banco ou senha administrativa entre ambientes. A homologação tem Swagger habilitado e limites menores de memória; use dados fictícios. A VPS atual tem 2 GB de RAM, então deixe a stack de homologação parada fora dos testes para reservar memória à produção. Se os dois ambientes precisarem permanecer ativos continuamente, aumente a memória da VPS.
 
-Para abrir o Portainer de forma privada no Windows, mantenha um túnel SSH ativo para a porta local 9000 e acesse `http://127.0.0.1:9000`. O túnel cifra a conexão; a porta do Portainer permanece fechada ao público. A versão deve permanecer atualizada; o arquivo fixa a versão LTS 2.45.2.
+Depois de criar o primeiro usuário da aplicação, remova as três variáveis `BOOTSTRAP_ADMIN_*` da stack e atualize-a. A senha da aplicação precisa ter entre 12 e 128 caracteres.
+
+Para abrir o Portainer de forma privada no Windows, mantenha este túnel SSH ativo e acesse `http://127.0.0.1:9000`:
+
+```powershell
+ssh -N -L 9000:127.0.0.1:9000 -i "$env:USERPROFILE\.ssh\gestao-vps" root@45.39.210.205
+```
+
+O túnel cifra a conexão; a porta do Portainer permanece fechada ao público. A versão deve permanecer atualizada; o arquivo fixa a versão LTS 2.45.2.
