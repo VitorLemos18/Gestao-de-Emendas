@@ -70,10 +70,11 @@ O Portainer deve ficar acessível somente por túnel SSH, sem publicar a porta a
 ```bash
 sudo apt-get install -y apache2-utils
 sudo install -d -m 755 /opt/portainer
-sudo -i
 read -rsp 'Senha inicial do Portainer: ' PORTAINER_PASSWORD; echo
-htpasswd -nbB -C 12 admin "$PORTAINER_PASSWORD" | cut -d: -f2 | sed 's/^\$2y\$/\$2a\$/' > /opt/portainer/admin-password-hash
-chmod 600 /opt/portainer/admin-password-hash
+HASH="$(printf '%s\n' "$PORTAINER_PASSWORD" | htpasswd -niB -C 12 admin | cut -d: -f2 | sed 's/^\$2y\$/\$2a\$/')"
+printf '%s\n' "$HASH" | sudo tee /opt/portainer/admin-password-hash >/dev/null
+sudo chmod 600 /opt/portainer/admin-password-hash
+unset PORTAINER_PASSWORD HASH
 cd /opt/gestao-emendas
 docker compose -f infra/portainer/compose.yml up -d
 ```
