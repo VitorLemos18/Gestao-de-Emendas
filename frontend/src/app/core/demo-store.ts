@@ -269,6 +269,91 @@ export class DemoStore {
       : await this.command<ApiPosting>(path, body);
     return result.id;
   }
+  async correctExpenseBackend(
+    id: string,
+    input: Omit<Expense, 'id' | 'receiptId' | 'commitmentDocument'>,
+    reason: string,
+    commitmentPdf?: File,
+  ): Promise<void> {
+    this.reason(reason);
+    const before = this.requireExpense(id);
+    if (!this.api) {
+      this.assertWrite(true);
+      if (commitmentPdf) throw new Error('A substituição do PDF exige conexão com o serviço.');
+      this.record({ expenses: this.expenses().map((item) => item.id === id
+        ? { ...item, ...input, version: (item.version ?? 1) + 1,
+            cnpj: input.cnpj ? formatCnpj(input.cnpj) : null } : item) },
+      'UPDATE', 'expense', id, 'Correção de empenho', before.receiptId, reason);
+      return;
+    }
+    const body = {
+      description: input.description, supplier: input.supplier,
+      cnpj: input.cnpj ? normalizeCnpj(input.cnpj) : null,
+      document: input.document, commitment_date: input.commitmentDate,
+      amount: input.amount, observations: input.observations?.trim() || null,
+      version: before.version ?? 1, reason,
+    };
+    if (commitmentPdf) {
+      const form = new FormData();
+      form.append('expense', new Blob([JSON.stringify(body)], { type: 'application/json' }));
+      form.append('commitment_document', commitmentPdf, commitmentPdf.name);
+      await this.api.patchForm<ApiExpense>(`/expenses/${id}`, form);
+    } else await this.api.patch<ApiExpense>(`/expenses/${id}`, body);
+    await this.refreshBackend();
+  }
+  async correctLiquidationBackend(id: string, input: Omit<Liquidation, 'id'>, reason: string): Promise<void> {
+    this.reason(reason);
+    if (!this.api) {
+      this.assertWrite(true);
+      const before = this.liquidations().find((item) => item.id === id);
+      if (!before) throw new Error('Liquidação não encontrada.');
+      this.record({ liquidations: this.liquidations().map((item) => item.id === id
+        ? { ...item, ...input, version: (item.version ?? 1) + 1 } : item) },
+        'UPDATE', 'liquidation', id, 'Correção de liquidação', input.expenseId, reason);
+      return;
+    }
+    const before = this.liquidations().find((item) => item.id === id);
+    if (!before) throw new Error('Liquidação não encontrada.');
+    await this.api.patch(`/liquidations/${id}`, {
+      date: input.date, amount: input.amount, document: input.document,
+      destination_account: input.destinationAccount?.trim() || '',
+      observations: input.observations?.trim() || null, version: before.version ?? 1, reason,
+    });
+    await this.refreshBackend();
+  }
+  async correctPaymentBackend(
+    id: string,
+    input: Omit<Payment, 'id' | 'reversal' | 'paymentDocument'>,
+    reason: string,
+    paymentPdf?: File,
+  ): Promise<void> {
+    this.reason(reason);
+    const before = this.payments().find((item) => item.id === id);
+    if (!before) throw new Error('Pagamento não encontrado.');
+    if (!this.api) {
+      this.assertWrite(true);
+      if (paymentPdf) throw new Error('A substituição do PDF exige conexão com o serviço.');
+      this.record({ payments: this.payments().map((item) => item.id === id
+        ? { ...item, ...input, version: (item.version ?? 1) + 1,
+            reversal: item.reversal, paymentDocument: item.paymentDocument } : item) },
+      'UPDATE', 'payment', id, 'Correção de pagamento', input.expenseId, reason);
+      return;
+    }
+    const body = {
+      date: input.date, amount: input.amount, document: input.document,
+      destination_account: input.destinationAccount?.trim() || '',
+      protocol_number: input.protocolNumber?.trim() || '',
+      observations: input.observations?.trim() || null,
+      version: before.version ?? 1, reason,
+    };
+    if (paymentPdf) {
+      const form = new FormData();
+      form.append('payment', new Blob([JSON.stringify(body)], { type: 'application/json' }));
+      form.append('payment_document', paymentPdf, paymentPdf.name);
+      await this.api.patchForm<ApiPosting>(`/payments/${id}`, form);
+    } else await this.api.patch<ApiPosting>(`/payments/${id}`, body);
+    await this.refreshBackend();
+  }
   async reversePaymentBackend(id: string, date: string, reason: string): Promise<void> {
     if (!this.api) return this.reversePayment(id, date, reason);
     await this.command<ApiReversal>(`/payments/${id}/reversals`, { date, reason });
@@ -1026,6 +1111,7 @@ function mapExpense(expense: ApiExpense): Expense {
     document: expense.document,
     commitmentDate: expense.commitment_date,
     amount: expense.amount.value,
+    version: expense.version,
     observations: expense.observations ?? null,
     commitmentDocument: expense.commitment_document
       ? {
@@ -1046,6 +1132,7 @@ function mapPosting(posting: ApiPosting): Liquidation {
     document: posting.document,
     destinationAccount: posting.destination_account ?? null,
     observations: posting.observations ?? null,
+    version: posting.version,
   };
 }
 function mapPayment(posting: ApiPosting): Payment {
@@ -1104,11 +1191,20 @@ function mapAudit(entry: ApiAuditEntry): AuditEntry {
   });
   const record = { ...(before ?? {}), ...(after ?? {}) };
   if (entry.action === 'REVERSE' && before?.['date']) record['date'] = before['date'];
+  const updateLabels: Record<string, string> = {
+    expense: 'Empenho corrigido',
+    liquidation: 'Liquidação corrigida',
+    payment: 'Pagamento corrigido',
+    receipt: 'Recebimento corrigido',
+    user: 'Acesso atualizado',
+  };
   return {
     id: entry.id,
     timestamp: entry.occurred_at,
     actor: entry.actor_name,
-    action: labels[entry.action] ?? entry.action,
+    action: entry.action === 'UPDATE'
+      ? updateLabels[entry.entity] ?? labels[entry.action]
+      : labels[entry.action] ?? entry.action,
     entityType: entry.entity,
     entityId: entry.entity_id,
     description: auditRecordSummary(entry.entity, record),

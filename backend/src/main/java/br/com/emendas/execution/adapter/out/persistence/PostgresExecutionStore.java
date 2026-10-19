@@ -40,7 +40,8 @@ public class PostgresExecutionStore implements ExecutionStore {
             r.getObject("commitment_date", LocalDate.class),
             new Money(r.getBigDecimal("amount")),
             document,
-            r.getString("observations"));
+            r.getString("observations"),
+            r.getLong("version"));
       };
   private static final String EXPENSE_SELECT =
       "SELECT e.*, d.id AS commitment_document_id, d.file_name AS commitment_document_name,"
@@ -60,7 +61,8 @@ public class PostgresExecutionStore implements ExecutionStore {
               r.getString("destination_account"),
               null,
               null,
-              r.getString("observations"));
+              r.getString("observations"),
+              r.getLong("version"));
   private static final RowMapper<Movement> PAYMENT_MOVEMENT =
       (r, n) -> {
         UUID documentId = r.getObject("payment_document_id", UUID.class);
@@ -82,7 +84,8 @@ public class PostgresExecutionStore implements ExecutionStore {
             r.getString("destination_account"),
             r.getString("protocol_number"),
             document,
-            r.getString("observations"));
+            r.getString("observations"),
+            r.getLong("version"));
       };
   private static final String PAYMENT_SELECT =
       "SELECT p.*, d.id AS payment_document_id, d.file_name AS payment_document_name,"
@@ -133,6 +136,13 @@ public class PostgresExecutionStore implements ExecutionStore {
         .optional();
   }
 
+  public Optional<Movement> liquidation(UUID id) {
+    return jdbc.sql("SELECT * FROM execution.liquidations WHERE id=?")
+        .param(id)
+        .query(MOVEMENT)
+        .optional();
+  }
+
   public Optional<Movement> payment(UUID id) {
     return jdbc.sql(PAYMENT_SELECT + " WHERE p.id=?")
         .param(id)
@@ -150,7 +160,8 @@ public class PostgresExecutionStore implements ExecutionStore {
   public PaymentDocumentInfo insertPaymentDocument(PaymentDocument document) {
     jdbc.sql(
             "INSERT INTO execution.payment_documents"
-                + "(id, payment_id, file_name, file_size, sha256, content) VALUES (?,?,?,?,?,?)")
+                + "(id, payment_id, file_name, file_size, sha256, content) VALUES (?,?,?,?,?,?)"
+                + " ON CONFLICT (payment_id, sha256) DO NOTHING")
         .params(
             document.id(),
             document.paymentId(),
@@ -161,7 +172,7 @@ public class PostgresExecutionStore implements ExecutionStore {
         .update();
     return jdbc.sql(
             "SELECT id, file_name, file_size, uploaded_at FROM execution.payment_documents"
-                + " WHERE payment_id=?")
+                + " WHERE payment_id=? ORDER BY uploaded_at DESC, id DESC LIMIT 1")
         .param(document.paymentId())
         .query(PAYMENT_DOCUMENT_INFO)
         .single();
@@ -261,6 +272,15 @@ public class PostgresExecutionStore implements ExecutionStore {
         .update();
   }
 
+  public boolean update(Expense e) {
+    allowExecutionCorrection();
+    return jdbc.sql("UPDATE execution.expenses SET description=?,supplier=?,cnpj=?,document=?,"
+            + "commitment_date=?,amount=?,observations=?,version=version+1 WHERE id=? AND version=?")
+        .params(e.description(), e.supplier(), e.cnpj(), e.document(), e.commitmentDate(),
+            e.amount().value(), e.observations(), e.id(), e.version())
+        .update() == 1;
+  }
+
   public void liquidate(Movement m) {
     jdbc.sql(
             "INSERT INTO execution.liquidations"
@@ -272,6 +292,15 @@ public class PostgresExecutionStore implements ExecutionStore {
         .update();
   }
 
+  public boolean updateLiquidation(Movement m) {
+    allowExecutionCorrection();
+    return jdbc.sql("UPDATE execution.liquidations SET date=?,amount=?,document=?,"
+            + "destination_account=?,observations=?,version=version+1 WHERE id=? AND version=?")
+        .params(m.date(), m.amount().value(), m.document(), m.destinationAccount(),
+            m.observations(), m.id(), m.version())
+        .update() == 1;
+  }
+
   public void pay(Movement m) {
     jdbc.sql(
             "INSERT INTO execution.payments"
@@ -281,6 +310,21 @@ public class PostgresExecutionStore implements ExecutionStore {
             m.id(), m.expenseId(), m.date(), m.amount().value(), m.document(),
             m.destinationAccount(), m.protocolNumber(), m.observations())
         .update();
+  }
+
+  public boolean updatePayment(Movement m) {
+    allowExecutionCorrection();
+    return jdbc.sql("UPDATE execution.payments SET date=?,amount=?,document=?,"
+            + "destination_account=?,protocol_number=?,observations=?,version=version+1 WHERE id=? AND version=?")
+        .params(m.date(), m.amount().value(), m.document(), m.destinationAccount(),
+            m.protocolNumber(), m.observations(), m.id(), m.version())
+        .update() == 1;
+  }
+
+  private void allowExecutionCorrection() {
+    jdbc.sql("SELECT set_config('app.execution_correction','allowed',true)")
+        .query(String.class)
+        .single();
   }
 
   public void reverse(Reversal r) {

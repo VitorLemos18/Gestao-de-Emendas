@@ -8,6 +8,8 @@ public interface ExecutionStore {
 
   Optional<Expense> expense(UUID id);
 
+  Optional<Movement> liquidation(UUID id);
+
   Optional<Movement> payment(UUID id);
 
   Optional<PaymentDocument> paymentDocument(UUID paymentId, UUID documentId);
@@ -22,9 +24,15 @@ public interface ExecutionStore {
 
   void insert(Expense expense);
 
+  boolean update(Expense expense);
+
   void liquidate(Movement movement);
 
+  boolean updateLiquidation(Movement movement);
+
   void pay(Movement movement);
+
+  boolean updatePayment(Movement movement);
 
   void reverse(Reversal reversal);
 }

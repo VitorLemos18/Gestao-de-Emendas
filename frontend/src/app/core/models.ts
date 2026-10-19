@@ -42,6 +42,7 @@ export interface Expense {
   document: string;
   commitmentDate: string;
   amount: Decimal;
+  version?: number;
   observations?: string | null;
   commitmentDocument?: {
     id: string;
@@ -58,6 +59,7 @@ export interface Liquidation {
   document: string;
   destinationAccount?: string | null;
   observations?: string | null;
+  version?: number;
 }
 export interface Payment {
   id: string;
@@ -67,6 +69,7 @@ export interface Payment {
   document: string;
   destinationAccount?: string | null;
   observations?: string | null;
+  version?: number;
   protocolNumber?: string;
   paymentDocument?: {
     id: string;

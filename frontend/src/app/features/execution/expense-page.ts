@@ -29,6 +29,12 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
             </p>
           </div>
           <div class="actions">
+            @if (store.isAdmin()) {
+              <button mat-stroked-button type="button" (click)="open('commitment', undefined, 'edit')"
+                matTooltip="Corrija os dados do empenho. A justificativa ficará registrada no histórico.">
+                Corrigir empenho
+              </button>
+            }
             <button mat-stroked-button type="button" (click)="showHelp()">
               Como ler as etapas?
             </button>
@@ -206,6 +212,7 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
                 <th scope="col">Documento</th>
                 <th scope="col">Conta de destino</th>
                 <th scope="col" class="numeric">Valor liquidado</th>
+                @if (store.isAdmin()) { <th scope="col">Ação</th> }
               </tr>
             </thead>
             <tbody>
@@ -220,10 +227,13 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
                   </td>
                   <td>{{ item.destinationAccount || 'Não informada no registro antigo' }}</td>
                   <td class="numeric">{{ item.amount | money }}</td>
+                  @if (store.isAdmin()) {
+                    <td><button mat-button type="button" (click)="open('liquidation', undefined, 'edit', item.id)">Editar</button></td>
+                  }
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="4" class="empty-state">
+                  <td [attr.colspan]="store.isAdmin() ? 5 : 4" class="empty-state">
                     <strong>Nenhuma liquidação registrada até 31/12/{{ store.year() }}</strong>
                     <p>Após confirmar a entrega ou execução, registre a liquidação para liberar o pagamento.</p>
                   </td>
@@ -284,9 +294,13 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
                   </td>
                   <td class="numeric">{{ item.amount | money }}</td>
                   <td>
+                    @if (store.isAdmin() && !item.reversal) {
+                      <button mat-button type="button" (click)="open('payment', item.id, 'edit')">Editar</button>
+                    }
                     @if (store.canWrite() && !item.reversal) {
                       <button mat-button type="button" (click)="open('reversal', item.id)">Estornar</button>
-                    } @else {
+                    }
+                    @if ((!store.canWrite() || item.reversal) && (!store.isAdmin() || item.reversal)) {
                       <span class="muted">—</span>
                     }
                   </td>
@@ -595,11 +609,16 @@ export class ExpensePage {
       maxHeight: '92dvh',
     });
   }
-  open(kind: ExecutionDialogData['kind'], paymentId?: string) {
+  open(
+    kind: ExecutionDialogData['kind'],
+    paymentId?: string,
+    mode: ExecutionDialogData['mode'] = 'create',
+    postingId?: string,
+  ) {
     const expense = this.expense();
     if (!expense) return;
     this.dialog.open(ExecutionDialog, {
-      data: { kind, expenseId: expense.id, receiptId: expense.receiptId, paymentId },
+      data: { kind, expenseId: expense.id, receiptId: expense.receiptId, paymentId, postingId, mode },
       width: '660px',
       maxWidth: 'calc(100vw - 24px)',
       maxHeight: '92dvh',

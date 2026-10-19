@@ -56,6 +56,14 @@ public class ExecutionService implements Execution {
   private record CreatePaymentRequest(
       Posting posting, String protocolNumber, String attachmentName, String attachmentSha256) {}
 
+  public record ExpenseCorrection(
+      String description, String supplier, String cnpj, String document, LocalDate commitmentDate,
+      BigDecimal amount, String observations, long version, String reason) {}
+
+  public record PostingCorrection(
+      LocalDate date, BigDecimal amount, String document, String destinationAccount,
+      String protocolNumber, String observations, long version, String reason) {}
+
   private record ExpenseAuditSnapshot(
       UUID id,
       UUID receiptId,
@@ -91,7 +99,8 @@ public class ExecutionService implements Execution {
       MoneyView liquidated,
       MoneyView paid,
       MoneyView pendingPayment,
-      String observations) {}
+      String observations,
+      long version) {}
 
   public record PostingView(
       UUID id,
@@ -102,11 +111,12 @@ public class ExecutionService implements Execution {
       String destinationAccount,
       String protocolNumber,
       Execution.PaymentDocumentInfo paymentDocument,
-      String observations) {
+      String observations,
+      long version) {
     public static PostingView of(Movement m) {
       return new PostingView(
           m.id(), m.expenseId(), m.date(), MoneyView.of(m.amount()), m.document(),
-          m.destinationAccount(), null, null, m.observations());
+          m.destinationAccount(), null, null, m.observations(), m.version());
     }
 
     public static PostingView ofPayment(Movement m) {
@@ -119,7 +129,8 @@ public class ExecutionService implements Execution {
           m.destinationAccount(),
           m.protocolNumber(),
           m.paymentDocument(),
-          m.observations());
+          m.observations(),
+          m.version());
     }
   }
 
@@ -160,6 +171,119 @@ public class ExecutionService implements Execution {
             .toList(),
         payments.stream().map(PostingView::ofPayment).toList(),
         snapshot.reversals().stream().filter(r -> paymentIds.contains(r.paymentId())).toList());
+  }
+
+  @Transactional
+  @PreAuthorize("hasRole('ADMIN')")
+  public ExpenseView correctExpense(UUID id, ExpenseCorrection r, PdfAttachment pdf) {
+    var before = expense(id);
+    if (before.version() != r.version())
+      throw DomainException.conflict("O empenho foi alterado por outra pessoa. Atualize a tela antes de corrigir.");
+    var receipt = funding.lockReceipt(before.receiptId());
+    var snapshot = forReceipt(receipt.id());
+    var amount = new Money(r.amount()).positive();
+    Timeline.noEarlierThan(r.commitmentDate(), receipt.creditDate());
+    var otherCommitments = snapshot.expenses().stream()
+        .filter(item -> !item.id().equals(id)).map(Expense::amount).reduce(Money.ZERO, Money::plus);
+    if (otherCommitments.plus(amount).compareTo(receipt.amount()) > 0)
+      throw DomainException.conflict("O valor corrigido excede o saldo disponível do recebimento.");
+    var liquidated = snapshot.liquidations().stream().filter(item -> item.expenseId().equals(id))
+        .map(Movement::amount).reduce(Money.ZERO, Money::plus);
+    if (liquidated.compareTo(amount) > 0)
+      throw DomainException.conflict("O valor do empenho não pode ficar abaixo do total já liquidado.");
+    if (snapshot.liquidations().stream().filter(item -> item.expenseId().equals(id))
+        .anyMatch(item -> item.date().isBefore(r.commitmentDate())))
+      throw DomainException.conflict("A data do empenho não pode ser posterior a uma liquidação já registrada.");
+    if (snapshot.payments().stream().filter(item -> item.expenseId().equals(id))
+        .anyMatch(item -> item.date().isBefore(r.commitmentDate())))
+      throw DomainException.conflict("A data do empenho não pode ser posterior a um pagamento já registrado.");
+    var replacement = new Expense(before.id(), before.receiptId(), r.description().strip(),
+        r.supplier().strip(), Cnpj.normalize(r.cnpj()), r.document().strip(), r.commitmentDate(),
+        amount, before.commitmentDocument(), normalizeObservations(r.observations()), before.version());
+    if (!store.update(replacement))
+      throw DomainException.conflict("O empenho foi alterado. Atualize a tela antes de salvar.");
+    if (pdf != null) store.insertCommitmentDocument(new Execution.CommitmentDocument(
+        UUID.randomUUID(), id, pdf.fileName(), pdf.sizeBytes(), pdf.sha256(), Instant.now(), pdf.content()));
+    var result = view(expense(id), forReceipt(receipt.id()));
+    audit.record(actor.get(), "UPDATE", "expense", id, auditSnapshot(view(before, snapshot)),
+        auditSnapshot(result), r.reason().strip());
+    return result;
+  }
+
+  @Transactional
+  @PreAuthorize("hasRole('ADMIN')")
+  public PostingView correctLiquidation(UUID id, PostingCorrection r) {
+    var before = store.liquidation(id)
+        .orElseThrow(() -> DomainException.missing("Liquidação não encontrada."));
+    if (before.version() != r.version())
+      throw DomainException.conflict("A liquidação foi alterada por outra pessoa. Atualize a tela antes de corrigir.");
+    var e = expense(before.expenseId());
+    var receipt = funding.lockReceipt(e.receiptId());
+    var snapshot = forReceipt(receipt.id());
+    var destinationAccount = requiredDestinationAccount(r.destinationAccount());
+    Timeline.noEarlierThan(r.date(), e.commitmentDate());
+    var amount = new Money(r.amount()).positive();
+    var otherLiquidated = snapshot.liquidations().stream()
+        .filter(item -> item.expenseId().equals(e.id()) && !item.id().equals(id))
+        .map(Movement::amount).reduce(Money.ZERO, Money::plus);
+    if (otherLiquidated.plus(amount).compareTo(e.amount()) > 0)
+      throw DomainException.conflict("As liquidações corrigidas excedem o valor empenhado.");
+    var accounts = new LinkedHashSet<String>();
+    snapshot.liquidations().stream().filter(item -> item.expenseId().equals(e.id()) && !item.id().equals(id))
+        .map(Movement::destinationAccount).filter(Objects::nonNull).map(String::trim)
+        .filter(value -> !value.isBlank()).forEach(accounts::add);
+    snapshot.payments().stream().filter(item -> item.expenseId().equals(e.id()))
+        .map(Movement::destinationAccount).filter(Objects::nonNull).map(String::trim)
+        .filter(value -> !value.isBlank()).forEach(accounts::add);
+    if (!accounts.isEmpty() && !accounts.contains(destinationAccount))
+      throw DomainException.conflict("A conta de destino deve permanecer igual às demais etapas deste empenho.");
+    var replacement = new Movement(id, e.id(), r.date(), amount, r.document().strip(),
+        destinationAccount, null, null, normalizeObservations(r.observations()), before.version());
+    var changed = replace(snapshot.liquidations(), id, replacement);
+    validateTimeline(receipt, new Snapshot(snapshot.expenses(), changed, snapshot.payments(), snapshot.reversals()), e.id());
+    if (!store.updateLiquidation(replacement))
+      throw DomainException.conflict("A liquidação foi alterada. Atualize a tela antes de salvar.");
+    var result = store.liquidation(id).map(PostingView::of).orElseGet(() -> PostingView.of(replacement));
+    audit.record(actor.get(), "UPDATE", "liquidation", id, PostingView.of(before), result, r.reason().strip());
+    return result;
+  }
+
+  @Transactional
+  @PreAuthorize("hasRole('ADMIN')")
+  public PostingView correctPayment(UUID id, PostingCorrection r, PdfAttachment pdf) {
+    var before = store.payment(id)
+        .orElseThrow(() -> DomainException.missing("Pagamento não encontrado."));
+    if (before.version() != r.version())
+      throw DomainException.conflict("O pagamento foi alterado por outra pessoa. Atualize a tela antes de corrigir.");
+    var e = expense(before.expenseId());
+    var receipt = funding.lockReceipt(e.receiptId());
+    var snapshot = forReceipt(receipt.id());
+    if (snapshot.reversals().stream().anyMatch(item -> item.paymentId().equals(id)))
+      throw DomainException.conflict("Um pagamento estornado não pode ser editado.");
+    if (r.protocolNumber() == null || r.protocolNumber().isBlank())
+      throw DomainException.invalid("Informe o número do protocolo.");
+    var destinationAccount = requiredDestinationAccount(r.destinationAccount());
+    var liquidationAccounts = destinationAccounts(snapshot.liquidations(), e.id());
+    if (liquidationAccounts.size() > 1 || (!liquidationAccounts.isEmpty() && !liquidationAccounts.contains(destinationAccount)))
+      throw DomainException.conflict("A conta de destino do pagamento deve ser a mesma registrada na liquidação.");
+    var replacement = new Movement(id, e.id(), r.date(), new Money(r.amount()).positive(),
+        r.document().strip(), destinationAccount, r.protocolNumber().strip(), before.paymentDocument(),
+        normalizeObservations(r.observations()), before.version());
+    Timeline.noEarlierThan(r.date(), e.commitmentDate());
+    var changed = replace(snapshot.payments(), id, replacement);
+    validateTimeline(receipt, new Snapshot(snapshot.expenses(), snapshot.liquidations(), changed, snapshot.reversals()), e.id());
+    if (!store.updatePayment(replacement))
+      throw DomainException.conflict("O pagamento foi alterado. Atualize a tela antes de salvar.");
+    if (pdf != null) store.insertPaymentDocument(new Execution.PaymentDocument(
+        UUID.randomUUID(), id, pdf.fileName(), pdf.sizeBytes(), pdf.sha256(), Instant.now(), pdf.content()));
+    var updated = store.payment(id).orElse(replacement);
+    var result = PostingView.ofPayment(updated);
+    audit.record(actor.get(), "UPDATE", "payment", id, PostingView.ofPayment(before), result, r.reason().strip());
+    return result;
+  }
+
+  private static List<Movement> replace(List<Movement> movements, UUID id, Movement replacement) {
+    return movements.stream().map(item -> item.id().equals(id) ? replacement : item).toList();
   }
 
   @Transactional
@@ -457,7 +581,8 @@ public class ExecutionService implements Execution {
         MoneyView.of(liquidated),
         MoneyView.of(paid),
         MoneyView.of(liquidated.minus(paid)),
-        e.observations());
+        e.observations(),
+        e.version());
   }
 
   private static ExpenseAuditSnapshot auditSnapshot(ExpenseView expense) {

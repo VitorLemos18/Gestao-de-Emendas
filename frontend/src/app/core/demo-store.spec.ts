@@ -89,6 +89,35 @@ describe('simulação financeira isolada em memória', () => {
     expect(() => store.correctReceipt('r2', { object: 'Alteração' }, 'Motivo suficiente')).toThrow(/administrador/i);
   });
 
+  it('permite corrigir cada etapa com justificativa e adiciona eventos ao histórico', async () => {
+    const expense = store.expenses().find((item) => item.id === 'e2')!;
+    const liquidation = store.liquidations().find((item) => item.expenseId === expense.id)!;
+    const payment = store.payments().find((item) => item.expenseId === expense.id)!;
+    const reason = 'Correção conforme documento conferido';
+
+    await store.correctExpenseBackend(expense.id, {
+      description: 'Descrição corrigida', supplier: expense.supplier, cnpj: expense.cnpj,
+      document: expense.document, commitmentDate: expense.commitmentDate,
+      amount: expense.amount, observations: 'Conferido',
+    }, reason);
+    await store.correctLiquidationBackend(liquidation.id, {
+      expenseId: expense.id, date: liquidation.date, amount: liquidation.amount,
+      document: 'LIQ corrigida', destinationAccount: liquidation.destinationAccount,
+      observations: liquidation.observations,
+    }, reason);
+    await store.correctPaymentBackend(payment.id, {
+      expenseId: expense.id, date: payment.date, amount: payment.amount,
+      document: 'OB corrigida', destinationAccount: payment.destinationAccount,
+      protocolNumber: payment.protocolNumber, observations: payment.observations,
+    }, reason);
+
+    expect(store.expenses().find((item) => item.id === expense.id)?.description).toBe('Descrição corrigida');
+    expect(store.liquidations().find((item) => item.id === liquidation.id)?.document).toBe('LIQ corrigida');
+    expect(store.payments().find((item) => item.id === payment.id)?.document).toBe('OB corrigida');
+    expect(store.audit().slice(0, 3).map((entry) => entry.entityType)).toEqual(['payment', 'liquidation', 'expense']);
+    expect(store.audit().slice(0, 3).every((entry) => entry.reason === reason)).toBe(true);
+  });
+
   it('não desativa o último administrador e valida unicidade dos cadastros', () => {
     const admin = store.currentUser();
     const { id, ...input } = admin;

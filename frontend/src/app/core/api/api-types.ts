@@ -50,11 +50,12 @@ export interface ApiReceiptCorrection {
 }
 export interface ApiExpense {
   id: string; receipt_id: string; description: string; supplier: string; cnpj?: string | null; document: string;
-  commitment_date: string; amount: ApiMoney; observations?: string | null;
+  commitment_date: string; amount: ApiMoney; observations?: string | null; version: number;
   commitment_document?: { id: string; file_name: string; size_bytes: number; uploaded_at: string } | null;
 }
 export interface ApiPosting {
   id: string; expense_id: string; date: string; amount: ApiMoney; document: string;
+  version: number;
   destination_account?: string | null;
   observations?: string | null;
   protocol_number?: string | null;

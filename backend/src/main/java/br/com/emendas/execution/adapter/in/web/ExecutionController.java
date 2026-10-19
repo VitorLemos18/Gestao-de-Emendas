@@ -53,6 +53,27 @@ public class ExecutionController {
       @NotBlank @Size(max = 100) String destinationAccount,
       @Size(max = 2000) String observations) {}
 
+  public record ExpenseCorrectionInput(
+      @NotBlank @Size(max = 2000) String description,
+      @NotBlank @Size(max = 200) String supplier,
+      @Size(max = 18) String cnpj,
+      @NotBlank @Size(max = 100) String document,
+      @NotNull LocalDate commitmentDate,
+      @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
+      @Size(max = 2000) String observations,
+      @Min(1) long version,
+      @NotBlank @Size(min = 5, max = 2000) String reason) {}
+
+  public record PostingCorrectionInput(
+      @NotNull LocalDate date,
+      @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
+      @NotBlank @Size(max = 100) String document,
+      @NotBlank @Size(max = 100) String destinationAccount,
+      @Size(max = 100) String protocolNumber,
+      @Size(max = 2000) String observations,
+      @Min(1) long version,
+      @NotBlank @Size(min = 5, max = 2000) String reason) {}
+
   public record ReversalInput(
       @NotNull LocalDate date, @NotBlank @Size(min = 5, max = 2000) String reason) {}
 
@@ -119,6 +140,59 @@ public class ExecutionController {
         r.commitmentDate(),
         r.amount(),
         r.observations());
+  }
+
+  @PatchMapping(value = "/expenses/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+  public ExecutionService.ExpenseView correctExpense(
+      @PathVariable UUID id, @Valid @RequestBody ExpenseCorrectionInput r) {
+    return service.correctExpense(id, new ExecutionService.ExpenseCorrection(
+        r.description(), r.supplier(), r.cnpj(), r.document(), r.commitmentDate(), r.amount(),
+        r.observations(), r.version(), r.reason()), null);
+  }
+
+  @PatchMapping(value = "/expenses/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ExecutionService.ExpenseView correctExpenseWithPdf(
+      @PathVariable UUID id,
+      @Valid @RequestPart("expense") ExpenseCorrectionInput r,
+      @RequestPart(value = "commitment_document", required = false) MultipartFile file) {
+    PdfAttachment pdf = attachment(file, "Nota de Empenho");
+    return service.correctExpense(id, new ExecutionService.ExpenseCorrection(
+        r.description(), r.supplier(), r.cnpj(), r.document(), r.commitmentDate(), r.amount(),
+        r.observations(), r.version(), r.reason()), pdf);
+  }
+
+  @PatchMapping("/liquidations/{id}")
+  public ExecutionService.PostingView correctLiquidation(
+      @PathVariable UUID id, @Valid @RequestBody PostingCorrectionInput r) {
+    return service.correctLiquidation(id, postingCorrection(r));
+  }
+
+  @PatchMapping(value = "/payments/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+  public ExecutionService.PostingView correctPayment(
+      @PathVariable UUID id, @Valid @RequestBody PostingCorrectionInput r) {
+    return service.correctPayment(id, postingCorrection(r), null);
+  }
+
+  @PatchMapping(value = "/payments/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ExecutionService.PostingView correctPaymentWithPdf(
+      @PathVariable UUID id,
+      @Valid @RequestPart("payment") PostingCorrectionInput r,
+      @RequestPart(value = "payment_document", required = false) MultipartFile file) {
+    return service.correctPayment(id, postingCorrection(r), attachment(file, "Ofício do pagamento"));
+  }
+
+  private static ExecutionService.PostingCorrection postingCorrection(PostingCorrectionInput r) {
+    return new ExecutionService.PostingCorrection(r.date(), r.amount(), r.document(),
+        r.destinationAccount(), r.protocolNumber(), r.observations(), r.version(), r.reason());
+  }
+
+  private static PdfAttachment attachment(MultipartFile file, String name) {
+    if (file == null || file.isEmpty()) return null;
+    try {
+      return PdfAttachment.create(file.getOriginalFilename(), file.getBytes(), name);
+    } catch (IOException error) {
+      throw DomainException.invalid("Não foi possível ler o PDF de " + name + ".");
+    }
   }
 
   @PostMapping("/expenses/{id}/liquidations")

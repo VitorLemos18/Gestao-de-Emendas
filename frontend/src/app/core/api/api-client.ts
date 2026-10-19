@@ -56,6 +56,10 @@ export class ApiClient {
     return this.request(this.http.patch<T>(this.url(path), body, { withCredentials: true }));
   }
 
+  patchForm<T>(path: string, body: FormData): Promise<T> {
+    return this.request(this.http.patch<T>(this.url(path), body, { withCredentials: true }));
+  }
+
   postBlob(path: string, query: Record<string, string | number | undefined>): Promise<Blob> {
     let params = new HttpParams();
     for (const [key, value] of Object.entries(query)) {

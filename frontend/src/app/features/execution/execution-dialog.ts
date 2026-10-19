@@ -43,6 +43,8 @@ export interface ExecutionDialogData {
   receiptId: string;
   expenseId?: string;
   paymentId?: string;
+  postingId?: string;
+  mode?: 'create' | 'edit';
 }
 @Component({
   selector: 'app-execution-dialog',
@@ -96,13 +98,14 @@ export interface ExecutionDialogData {
             na data informada.
           </p>
         } @else {
-          <p class="limit-note">
-            {{ limitLabel }}: <strong>{{ limit() | money }}</strong
-            ><span class="muted"
-              >Considera todos os lançamentos registrados. Saldo e liquidação também serão
-              verificados na data informada.</span
-            >
-          </p>
+          @if (editing) {
+            <p class="limit-note">A correção exige justificativa e será revalidada com os demais lançamentos.</p>
+          } @else {
+            <p class="limit-note">
+              {{ limitLabel }}: <strong>{{ limit() | money }}</strong
+              ><span class="muted">Considera todos os lançamentos registrados. Saldo e liquidação também serão verificados na data informada.</span>
+            </p>
+          }
         }
         <div class="form-grid">
           @if (data.kind === 'commitment') {
@@ -159,7 +162,11 @@ export interface ExecutionDialogData {
                   </button>
                 </div>
               } @else {
-                <span class="pdf-empty">Nenhum arquivo selecionado</span>
+                @if (editing && expense()?.commitmentDocument; as document) {
+                  <span class="pdf-empty">PDF atual: {{ document.fileName }} · anexe outro para substituí-lo.</span>
+                } @else {
+                  <span class="pdf-empty">Nenhum arquivo selecionado</span>
+                }
               }
               @if (documentError()) {
                 <p class="pdf-error" role="alert">{{ documentError() }}</p>
@@ -269,7 +276,11 @@ export interface ExecutionDialogData {
                     </button>
                   </div>
                 } @else {
-                  <span class="pdf-empty">Nenhum arquivo selecionado</span>
+                  @if (editing && payment()?.paymentDocument; as document) {
+                    <span class="pdf-empty">PDF atual: {{ document.fileName }} · anexe outro para substituí-lo.</span>
+                  } @else {
+                    <span class="pdf-empty">Nenhum arquivo selecionado</span>
+                  }
                 }
                 @if (paymentDocumentError()) {
                   <p class="pdf-error" role="alert">{{ paymentDocumentError() }}</p>
@@ -289,6 +300,15 @@ export interface ExecutionDialogData {
               <mat-hint>Até 2.000 caracteres.</mat-hint>
               <mat-error>Use no máximo 2.000 caracteres.</mat-error>
             </mat-form-field>
+            @if (editing) {
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Justificativa da correção</mat-label>
+                <textarea matInput formControlName="reason" rows="3" maxlength="2000" required
+                  placeholder="Explique por que os dados precisam ser corrigidos"></textarea>
+                <mat-hint>Obrigatória · ficará registrada no histórico com os dados anteriores e corrigidos.</mat-hint>
+                <mat-error>Informe uma justificativa com pelo menos 5 caracteres.</mat-error>
+              </mat-form-field>
+            }
           } @else {
             <mat-form-field appearance="outline" class="full-width"
               ><mat-label>Motivo do estorno</mat-label
@@ -309,7 +329,7 @@ export interface ExecutionDialogData {
       <mat-dialog-actions align="end"
         ><button mat-button type="button" (click)="cancel()">Cancelar</button
         ><button mat-flat-button type="submit" [disabled]="saving()">
-          {{ data.kind === 'reversal' ? 'Confirmar estorno' : 'Registrar lançamento' }}
+          {{ data.kind === 'reversal' ? 'Confirmar estorno' : editing ? 'Salvar correção' : 'Registrar lançamento' }}
         </button></mat-dialog-actions
       >
     </form>
@@ -466,18 +486,27 @@ export class ExecutionDialog {
   readonly payment = computed(() =>
     this.store.payments().find((p) => p.id === this.data.paymentId),
   );
+  readonly liquidation = computed(() =>
+    this.store.liquidations().find((item) => item.id === this.data.postingId),
+  );
+  readonly editing = this.data.mode === 'edit';
   readonly registeredDestinationAccount = computed(() =>
     this.data.expenseId ? this.store.expenseDestinationAccount(this.data.expenseId) : null,
   );
   readonly destinationAccountReadonly = computed(
     () => this.data.kind === 'payment' && Boolean(this.registeredDestinationAccount()),
   );
-  readonly title = {
+  readonly title = (this.editing ? {
+    commitment: 'Corrigir empenho',
+    liquidation: 'Corrigir liquidação',
+    payment: 'Corrigir pagamento',
+    reversal: 'Estornar pagamento',
+  } : {
     commitment: 'Registrar despesa',
     liquidation: 'Registrar liquidação',
     payment: 'Registrar pagamento',
     reversal: 'Estornar pagamento',
-  }[this.data.kind];
+  })[this.data.kind];
   readonly stageLabel = {
     commitment: 'Etapa 1 · Empenho',
     liquidation: 'Etapa 2 · Liquidação',
@@ -596,7 +625,42 @@ export class ExecutionDialog {
     if (this.data.kind === 'reversal') {
       this.form.controls.amount.disable();
       this.form.controls.document.disable();
-    } else this.form.controls.reason.disable();
+    } else if (!this.editing) this.form.controls.reason.disable();
+    if (this.editing) this.populateCorrection();
+  }
+  private populateCorrection(): void {
+    let date: string | undefined;
+    let amount: string | undefined;
+    if (this.data.kind === 'commitment') {
+      const item = this.expense();
+      if (!item) return;
+      this.form.patchValue({
+        description: item.description, supplier: item.supplier, cnpj: item.cnpj ?? '',
+        document: item.document, observations: item.observations ?? '',
+      });
+      date = item.commitmentDate;
+      amount = item.amount;
+    } else if (this.data.kind === 'liquidation') {
+      const item = this.liquidation();
+      if (!item) return;
+      this.form.patchValue({
+        document: item.document, destinationAccount: item.destinationAccount ?? '',
+        observations: item.observations ?? '',
+      });
+      date = item.date;
+      amount = item.amount;
+    } else if (this.data.kind === 'payment') {
+      const item = this.payment();
+      if (!item) return;
+      this.form.patchValue({
+        document: item.document, destinationAccount: item.destinationAccount ?? '',
+        protocolNumber: item.protocolNumber ?? '', observations: item.observations ?? '',
+      });
+      date = item.date;
+      amount = item.amount;
+    }
+    if (date) this.form.controls.date.setValue(new Date(`${date}T12:00:00`));
+    if (amount) this.form.controls.amount.setValue(amount);
   }
   cancel() {
     if (!this.form.dirty) {
@@ -703,8 +767,37 @@ export class ExecutionDialog {
     const date = `${value.date.getFullYear()}-${String(value.date.getMonth() + 1).padStart(2, '0')}-${String(value.date.getDate()).padStart(2, '0')}`;
     this.saving.set(true);
     try {
+      if (this.editing && this.data.kind === 'commitment')
+        await this.store.correctExpenseBackend(this.data.expenseId!, {
+          description: value.description,
+          supplier: value.supplier,
+          cnpj: value.cnpj,
+          document: value.document,
+          commitmentDate: date,
+          amount: value.amount!,
+          observations: value.observations.trim() || null,
+        }, value.reason, this.selectedCommitmentPdf() ?? undefined);
+      if (this.editing && this.data.kind === 'liquidation')
+        await this.store.correctLiquidationBackend(this.data.postingId!, {
+          expenseId: this.data.expenseId!,
+          date,
+          amount: value.amount!,
+          document: value.document,
+          destinationAccount: value.destinationAccount.trim(),
+          observations: value.observations.trim() || null,
+        }, value.reason);
+      if (this.editing && this.data.kind === 'payment')
+        await this.store.correctPaymentBackend(this.data.paymentId!, {
+          expenseId: this.data.expenseId!,
+          date,
+          amount: value.amount!,
+          document: value.document,
+          destinationAccount: value.destinationAccount.trim(),
+          protocolNumber: value.protocolNumber.trim(),
+          observations: value.observations.trim() || null,
+        }, value.reason, this.selectedPaymentPdf() ?? undefined);
       if (this.data.kind === 'commitment')
-        await this.store.createExpense({
+        if (!this.editing) await this.store.createExpense({
           receiptId: this.data.receiptId,
           description: value.description,
           supplier: value.supplier,
@@ -715,7 +808,7 @@ export class ExecutionDialog {
           observations: value.observations.trim() || null,
         }, this.selectedCommitmentPdf() ?? undefined);
       if (this.data.kind === 'liquidation')
-        await this.store.createLiquidation({
+        if (!this.editing) await this.store.createLiquidation({
           expenseId: this.data.expenseId!,
           date,
           amount: value.amount!,
@@ -724,7 +817,7 @@ export class ExecutionDialog {
           observations: value.observations.trim() || null,
         });
       if (this.data.kind === 'payment')
-        await this.store.createPayment({
+        if (!this.editing) await this.store.createPayment({
           expenseId: this.data.expenseId!,
           date,
           amount: value.amount!,
@@ -737,7 +830,7 @@ export class ExecutionDialog {
         await this.store.reversePaymentBackend(this.data.paymentId!, date, value.reason);
       if (value.date.getFullYear() > this.store.year())
         this.store.year.set(value.date.getFullYear());
-      this.toast.open('Lançamento registrado.', 'Fechar', { duration: 4500 });
+      this.toast.open(this.editing ? 'Correção salva no histórico.' : 'Lançamento registrado.', 'Fechar', { duration: 4500 });
       this.ref.close(true);
     } catch (error) {
       this.error.set(

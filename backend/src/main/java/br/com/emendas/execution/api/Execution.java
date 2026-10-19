@@ -16,7 +16,15 @@ public interface Execution {
       LocalDate commitmentDate,
       Money amount,
       CommitmentDocumentInfo commitmentDocument,
-      String observations) {}
+      String observations,
+      long version) {
+    public Expense(UUID id, UUID receiptId, String description, String supplier, String cnpj,
+        String document, LocalDate commitmentDate, Money amount,
+        CommitmentDocumentInfo commitmentDocument, String observations) {
+      this(id, receiptId, description, supplier, cnpj, document, commitmentDate, amount,
+          commitmentDocument, observations, 1);
+    }
+  }
 
   record CommitmentDocumentInfo(UUID id, String fileName, long sizeBytes, Instant uploadedAt) {}
 
@@ -44,7 +52,14 @@ public interface Execution {
       String destinationAccount,
       String protocolNumber,
       PaymentDocumentInfo paymentDocument,
-      String observations) {
+      String observations,
+      long version) {
+    public Movement(UUID id, UUID expenseId, LocalDate date, Money amount, String document,
+        String destinationAccount, String protocolNumber, PaymentDocumentInfo paymentDocument,
+        String observations) {
+      this(id, expenseId, date, amount, document, destinationAccount, protocolNumber,
+          paymentDocument, observations, 1);
+    }
     public Movement(UUID id, UUID expenseId, LocalDate date, Money amount, String document) {
       this(id, expenseId, date, amount, document, null, null, null, null);
     }

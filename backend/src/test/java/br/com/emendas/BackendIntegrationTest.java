@@ -171,6 +171,61 @@ class BackendIntegrationTest {
   }
 
   @Test
+  void adminCanCorrectAllExecutionStagesWithReasonAndTimelineGuards() throws Exception {
+    var seed = seed("100000.00", "2025-01-10");
+    String expenseId = expense(seed.receipt, "100000.00", "2025-01-11");
+    var liquidation = admin.post(
+        "/expenses/" + expenseId + "/liquidations", posting("2025-01-12", "100.00"));
+    liquidation.expect(200);
+    String liquidationId = liquidation.node().path("id").asText();
+    var payment = admin.post(
+        "/expenses/" + expenseId + "/payments", paymentPosting("2025-01-13", "50.00"));
+    payment.expect(200);
+    String paymentId = payment.node().path("id").asText();
+
+    var expenseEdit = new HashMap<String, Object>(expenseBody(seed.receipt, "80.00", "2025-01-11"));
+    expenseEdit.remove("receipt_id");
+    expenseEdit.put("version", 1);
+    admin.patch("/expenses/" + expenseId, expenseEdit).expect(422);
+    expenseEdit.put("reason", "Valor digitado incorretamente");
+    admin.patch("/expenses/" + expenseId, expenseEdit).expect(409);
+    expenseEdit.put("amount", "95000.00");
+    admin.patch("/expenses/" + expenseId, expenseEdit).expect(200);
+    admin.patch("/expenses/" + expenseId, expenseEdit).expect(409);
+    assertEquals("95000.00", admin.get("/expenses/" + expenseId).node().path("amount").path("value").asText());
+
+    var liquidationEdit = new HashMap<String, Object>(posting("2025-01-12", "40.00"));
+    liquidationEdit.put("reason", "Valor da liquidação corrigido");
+    liquidationEdit.put("version", 1);
+    admin.patch("/liquidations/" + liquidationId, liquidationEdit).expect(409);
+    liquidationEdit.put("amount", "80.00");
+    admin.patch("/liquidations/" + liquidationId, liquidationEdit).expect(200);
+    admin.patch("/liquidations/" + liquidationId, liquidationEdit).expect(409);
+    assertEquals(2, admin.get("/expenses/" + expenseId).node()
+        .path("liquidations").get(0).path("version").asInt());
+
+    var paymentEdit = new HashMap<String, Object>(paymentPosting("2025-01-13", "81.00"));
+    paymentEdit.put("reason", "Valor do pagamento corrigido");
+    paymentEdit.put("version", 1);
+    admin.patch("/payments/" + paymentId, paymentEdit).expect(409);
+    paymentEdit.put("amount", "80.00");
+    paymentEdit.put("protocol_number", "PROC-CORRIGIDO");
+    admin.patch("/payments/" + paymentId, paymentEdit).expect(200);
+    admin.patch("/payments/" + paymentId, paymentEdit).expect(409);
+    assertEquals("PROC-CORRIGIDO", admin.get("/expenses/" + expenseId).node()
+        .path("payments").get(0).path("protocol_number").asText());
+    assertEquals(2, admin.get("/expenses/" + expenseId).node()
+        .path("payments").get(0).path("version").asInt());
+
+    assertTrue(admin.get("/audit?entity=expense&entity_id=" + expenseId).node().toString()
+        .contains("Valor digitado incorretamente"));
+    assertTrue(admin.get("/audit?entity=liquidation&entity_id=" + liquidationId).node().toString()
+        .contains("Valor da liquidação corrigido"));
+    assertTrue(admin.get("/audit?entity=payment&entity_id=" + paymentId).node().toString()
+        .contains("Valor do pagamento corrigido"));
+  }
+
+  @Test
   void amendmentStoresOfficialMirrorPdfAndAllowsDownload() throws Exception {
     var author = admin.post("/parliamentarians", Map.of("name", "Autora " + UUID.randomUUID()));
     author.expect(200);
