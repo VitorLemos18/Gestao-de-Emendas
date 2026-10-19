@@ -1,0 +1,20 @@
+services:
+  portainer:
+    image: portainer/portainer-ce:2.45.2
+    container_name: portainer
+    command:
+      - --http-enabled
+      - --admin-password-file
+      - /run/secrets/admin_password_hash
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+      - /opt/portainer/admin-password-hash:/run/secrets/admin_password_hash:ro
+    mem_limit: 192m
+    restart: unless-stopped
+
+volumes:
+  portainer_data:
+    name: portainer_data

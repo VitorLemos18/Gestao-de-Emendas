@@ -5,7 +5,7 @@ A implantação usa Docker Compose com três serviços: Angular/Nginx, API Sprin
 ## Requisitos
 
 - Ubuntu 24.04, Docker Engine e Docker Compose v2.
-- Portas TCP 80 e 443 liberadas no firewall do sistema e do provedor.
+- Portas TCP 80 e 443 liberadas no firewall do sistema e do provedor; 8443 somente para homologação.
 - O IP público configurado na emissão do certificado deve permanecer apontado para esta VPS.
 - Certbot 5.4 ou superior, pois o certificado público do Let's Encrypt para IP tem validade de seis dias e exige renovação automática.
 
@@ -62,3 +62,14 @@ Confira `docker compose -f compose.production.yml ps` e os logs antes de conside
 ## Acesso
 
 Com o certificado e os serviços saudáveis, a interface ficará em `https://45.39.210.205/`. A API fica sob o mesmo endereço em `/api/v1`; Swagger está desativado em produção. O primeiro login exige troca de senha. O banco não é acessível externamente.
+
+## Portainer e homologação
+
+O Portainer deve ficar acessível somente por túnel SSH, sem publicar a porta administrativa na internet. A definição versionada está em `infra/portainer/compose.yml`; antes de iniciá-la, crie `/opt/portainer/admin-password-hash` com um hash bcrypt da senha inicial do administrador e permissão `600`. Cadastre duas stacks Git independentes, ambas apontando para a branch `main` deste repositório:
+
+- **Produção**: arquivo `compose.production.yml`, URL `https://45.39.210.205/`, banco e volume `database` próprios.
+- **Homologação**: arquivo `compose.homolog.yml`, URL `https://45.39.210.205:8443/`, banco e volume `database_homolog` próprios.
+
+Configure `DB_PASSWORD`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME` e `BOOTSTRAP_ADMIN_PASSWORD` separadamente em cada stack. Nunca reutilize senha de banco ou senha administrativa entre ambientes. A homologação tem Swagger habilitado e limites menores de memória; use dados fictícios. A VPS atual tem 2 GB de RAM, então deixe a stack de homologação parada fora dos testes para reservar memória à produção. Se os dois ambientes precisarem permanecer ativos continuamente, aumente a memória da VPS.
+
+Para abrir o Portainer de forma privada no Windows, mantenha um túnel SSH ativo para a porta local 9000 e acesse `http://127.0.0.1:9000`. O túnel cifra a conexão; a porta do Portainer permanece fechada ao público. A versão deve permanecer atualizada; o arquivo fixa a versão LTS 2.45.2.

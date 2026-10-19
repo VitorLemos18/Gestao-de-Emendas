@@ -1,0 +1,63 @@
+name: gestao-emendas-homolog
+
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: emendas
+      POSTGRES_USER: emendas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Configure DB_PASSWORD na stack de homologacao}
+    volumes:
+      - database_homolog:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emendas -d emendas"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 128m
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    environment:
+      DB_URL: jdbc:postgresql://database:5432/emendas
+      DB_USER: emendas
+      DB_PASSWORD: ${DB_PASSWORD:?Configure DB_PASSWORD na stack de homologacao}
+      SERVER_ADDRESS: 0.0.0.0
+      PORT: 8000
+      COOKIE_SECURE: "true"
+      DOCS_ENABLED: "true"
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administrador de homologacao}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=55 -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    mem_limit: 384m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.homolog
+    ports:
+      - "8443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  database_homolog:
