@@ -4,7 +4,10 @@ DECLARE
   first_commitment date;
 BEGIN
   IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Recebimento não pode ser excluído'; END IF;
-  IF current_setting('app.receipt_correction', true) IS DISTINCT FROM 'allowed' THEN
+  IF current_setting('app.receipt_correction', true) IS DISTINCT FROM 'allowed'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount
+          OR NEW.credit_date IS DISTINCT FROM OLD.credit_date
+          OR NEW.amendment_id IS DISTINCT FROM OLD.amendment_id) THEN
     RAISE EXCEPTION 'Correção de recebimento exige a operação administrativa';
   END IF;
   SELECT COALESCE(SUM(amount),0), MIN(commitment_date)
