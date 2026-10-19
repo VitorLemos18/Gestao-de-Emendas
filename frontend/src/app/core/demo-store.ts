@@ -32,7 +32,7 @@ import {
 } from './api/api-types';
 
 type ReceiptCorrection = Partial<
-  Pick<Receipt, 'type' | 'action' | 'expenseElement' | 'source' | 'object' | 'account'>
+  Pick<Receipt, 'amendmentId' | 'type' | 'action' | 'expenseElement' | 'source' | 'object' | 'creditDate' | 'account' | 'amount'>
 >;
 type CashEvent = Omit<LedgerLine, 'amount' | 'balance'> & { cents: bigint };
 const MAX_AMOUNT = 99999999999999n;
@@ -203,12 +203,15 @@ export class DemoStore {
     if (!this.api) return this.correctReceipt(id, patch, reason);
     const before = this.requireReceipt(id);
     await this.api.patch<ApiReceipt>(`/receipts/${id}`, {
+      amendment_id: patch.amendmentId ?? before.amendmentId,
       type: patch.type ?? before.type,
       action: patch.action ?? before.action,
       expense_element: patch.expenseElement ?? before.expenseElement,
       source: patch.source ?? before.source,
       object: patch.object ?? before.object,
+      credit_date: patch.creditDate ?? before.creditDate,
       bank_account: patch.account ?? before.account,
+      amount: patch.amount ?? before.amount,
       version: before.version,
       reason,
     });
@@ -490,30 +493,43 @@ export class DemoStore {
   }
 
   correctReceipt(id: string, patch: ReceiptCorrection, reason: string): void {
-    this.assertWrite();
+    this.assertWrite(true);
     this.reason(reason);
     const before = this.requireReceipt(id);
     const labels = {
+      amendmentId: 'Emenda / parlamentar',
       type: 'Tipo',
       action: 'Ação',
       expenseElement: 'Elemento de despesa',
       source: 'Fonte de recurso',
       object: 'Objeto',
+      creditDate: 'Data do crédito',
       account: 'Conta bancária',
+      amount: 'Valor recebido',
     };
-    if (Object.keys(patch).some((key) => !(key in labels)))
-      throw new Error('Valor, data e origem do crédito são imutáveis.');
+    if (patch.amendmentId && !this.amendments().some((a) => a.id === patch.amendmentId))
+      throw new Error('Selecione uma emenda cadastrada.');
+    if (patch.creditDate) this.date(patch.creditDate);
+    const nextAmount = patch.amount === undefined ? before.amount : fromCents(this.positive(patch.amount));
+    const commitments = this.sum(this.expenses().filter((e) => e.receiptId === id).map((e) => e.amount));
+    if (toCents(nextAmount) < commitments)
+      throw new Error('O novo valor não pode ser menor que o total já empenhado.');
+    const nextDate = patch.creditDate ?? before.creditDate;
+    if (this.expenses().some((e) => e.receiptId === id && e.commitmentDate < nextDate))
+      throw new Error('A nova data do crédito não pode ser posterior a um empenho já registrado.');
     const after = {
       ...before,
+      ...patch,
       ...this.receiptFields({ ...before, ...patch }),
+      amount: nextAmount,
       version: before.version + 1,
     };
     const changes = (Object.keys(labels) as (keyof typeof labels)[])
       .filter((key) => before[key] !== after[key])
       .map((key) => ({
         field: labels[key],
-        before: before[key] ?? '',
-        after: after[key] ?? '',
+        before: key === 'amendmentId' ? this.amendmentLabel(before.amendmentId) : before[key] ?? '',
+        after: key === 'amendmentId' ? this.amendmentLabel(after.amendmentId) : after[key] ?? '',
       }));
     this.record(
       { receipts: this.receipts().map((r) => (r.id === id ? after : r)) },
@@ -525,6 +541,15 @@ export class DemoStore {
       reason,
       changes,
     );
+  }
+
+  private amendmentLabel(id: string): string {
+    const amendment = this.amendments().find((item) => item.id === id);
+    const author = amendment && this.authors().find((item) => item.id === amendment.authorId);
+    const number = amendment && /\/?\d{4}$/.test(amendment.number)
+      ? amendment.number
+      : `${amendment?.number}/${amendment?.year}`;
+    return amendment ? `${author?.name ?? 'Parlamentar'} · ${number}` : id;
   }
 
   addExpense(input: Omit<Expense, 'id'>): string {
@@ -923,7 +948,7 @@ export class DemoStore {
 
   private assertWrite(admin = false): void {
     if (admin && !this.isAdmin())
-      throw new Error('Somente o administrador pode gerenciar acessos.');
+      throw new Error('Somente o administrador pode realizar esta operação.');
     if (!this.canWrite()) throw new Error('Seu perfil não permite esta operação.');
   }
 

@@ -20,7 +20,7 @@ Permitir avaliar o trabalho diário em uma aplicação Angular real, com Materia
 - Um parlamentar pode ter múltiplos recebimentos com objetos e saldos separados.
 - Cadastro contém emenda, tipo, ação, elemento de despesa, fonte de recurso, objeto, data, conta e valor.
 - Digitar 10000 significa dez mil reais; exibir 10.000,00, com duas casas. Datas DD/MM/AAAA; contas e documentos como texto preservando zeros.
-- Corrigir somente tipo, ação, elemento de despesa, fonte de recurso, objeto e conta, com motivo; origem, data e valor permanecem imutáveis.
+- Administrador pode corrigir parlamentar/emenda, data e valor do recebimento, além dos demais campos, sempre com justificativa obrigatória e registro de antes/depois no histórico. O novo valor não pode ficar abaixo dos empenhos existentes, e a data não pode avançar além de empenho já registrado.
 - Registrar empenho, liquidação parcial, pagamento e estorno integral com validações de saldo e cronologia. Nenhum empenho ou liquidação reduz caixa.
 - Estorno devolve caixa na data informada e preserva pagamento original e motivo.
 - O saldo anterior pertence ao mesmo recebimento e não cria novo crédito na virada de exercício.

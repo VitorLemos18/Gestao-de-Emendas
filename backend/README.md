@@ -58,7 +58,7 @@ Prefixo `/api/v1`, UUIDs, JSON e parâmetros em snake_case. Datas financeiras IS
 
 Listas: `items`, `total`, `offset`, `limit` (1 a 200). Erros seguem Problem Details, com `status`, `detail`, `code`, `request_id` e `fields` quando aplicável. A estrutura difere da API Python inicial, que ainda não tinha consumidores integrados.
 
-Criações de recebimento, empenho, liquidação, pagamento e estorno exigem `Idempotency-Key` UUID. Mesma chave/ator e mesmo comando devolvem a resposta anterior; dados diferentes retornam 409. Se houver falha, a transação desfaz também a chave. Correções de metadados exigem `version` e `reason`; valor/data/origem do crédito e lançamentos financeiros são imutáveis.
+Criações de recebimento, empenho, liquidação, pagamento e estorno exigem `Idempotency-Key` UUID. Mesma chave/ator e mesmo comando devolvem a resposta anterior; dados diferentes retornam 409. Se houver falha, a transação desfaz também a chave. Correções administrativas do recebimento exigem versão atual e justificativa de 5 a 2000 caracteres; podem alterar parlamentar/emenda, valor, data do crédito e demais dados de origem. O valor corrigido não pode ficar abaixo do total empenhado e a data não pode avançar além de um empenho existente. A alteração e sua trilha de auditoria são atômicas.
 
 ## Recursos principais
 

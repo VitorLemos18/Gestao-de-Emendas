@@ -63,8 +63,8 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
       </div>
       @if (editing()) {
         <p class="context-note">
-          Parlamentar, emenda, data e valor original são preservados. A correção será registrada no
-          histórico.
+          Todos os dados do crédito podem ser corrigidos por um administrador. O motivo é obrigatório
+          e a alteração fica registrada no histórico.
         </p>
       }
       <form [formGroup]="form" (ngSubmit)="save()" novalidate>
@@ -85,7 +85,7 @@ import { WorkflowHelpDialog } from '../../shared/workflow-help-dialog';
                 required
                 matTooltip="Selecione quem indicou esta emenda. Se ainda não estiver na lista, cadastre primeiro em Parlamentares."
               />
-              @if (form.controls.author.value && !editing()) {
+              @if (form.controls.author.value) {
                 <button
                   matSuffix
                   mat-button
@@ -394,8 +394,7 @@ export class ReceiptForm implements OnInit {
     typeof value === 'object' && value ? value.number : typeof value === 'string' ? value : '';
   constructor() {
     this.form.controls.author.valueChanges.pipe(takeUntilDestroyed()).subscribe((value) => {
-      if (this.editing()) return;
-      this.form.controls.amendment.setValue(null);
+      this.form.controls.amendment.setValue(null, { emitEvent: false });
       if (value && typeof value === 'object') this.form.controls.amendment.enable();
       else this.form.controls.amendment.disable();
     });
@@ -429,6 +428,7 @@ export class ReceiptForm implements OnInit {
     }
     const author = this.store.receiptAuthor(id) ?? null;
     const [y, m, d] = receipt.creditDate.split('-').map(Number);
+    this.form.controls.amendment.enable();
     this.form.patchValue({
       author,
       amendment: this.store.amendments().find((a) => a.id === receipt.amendmentId) ?? null,
@@ -441,8 +441,6 @@ export class ReceiptForm implements OnInit {
       account: receipt.account,
       amount: receipt.amount,
     });
-    for (const key of ['author', 'amendment', 'date', 'amount'] as const)
-      this.form.controls[key].disable();
     this.form.controls.reason.addValidators([Validators.required, Validators.minLength(5)]);
     this.form.controls.reason.updateValueAndValidity();
     this.form.markAsPristine();
@@ -477,12 +475,15 @@ export class ReceiptForm implements OnInit {
         await this.store.correctReceiptBackend(
           id,
           {
+            amendmentId: value.amendment.id,
             type: value.type,
             action: value.action.trim(),
             expenseElement: value.expenseElement.trim(),
             source: value.source.trim(),
             object: value.object.trim(),
             account: value.account.trim(),
+            creditDate: localIso(value.date),
+            amount: value.amount,
           },
           value.reason.trim(),
         );

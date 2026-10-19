@@ -1,6 +1,8 @@
 package br.com.emendas.funding.application;
 
 import br.com.emendas.funding.api.Funding.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.*;
 
 public interface FundingStore {
@@ -25,4 +27,8 @@ public interface FundingStore {
   void insert(UUID id, FundingService.NewReceipt receipt);
 
   boolean update(UUID id, FundingService.EditReceipt receipt);
+
+  ReceiptCommitments receiptCommitments(UUID id);
+
+  record ReceiptCommitments(BigDecimal total, LocalDate firstCommitmentDate) {}
 }

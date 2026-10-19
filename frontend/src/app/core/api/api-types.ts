@@ -35,6 +35,19 @@ export interface ApiReceipt {
   id: string; amendment_id: string; type: string; source: string; action: string; expense_element: string | null;
   object: string; credit_date: string; bank_account: string; amount: ApiMoney; version: number;
 }
+export interface ApiReceiptCorrection {
+  amendment_id: string;
+  type: string;
+  source: string;
+  action: string;
+  expense_element: string;
+  object: string;
+  credit_date: string;
+  bank_account: string;
+  amount: string;
+  version: number;
+  reason: string;
+}
 export interface ApiExpense {
   id: string; receipt_id: string; description: string; supplier: string; cnpj?: string | null; document: string;
   commitment_date: string; amount: ApiMoney; observations?: string | null;

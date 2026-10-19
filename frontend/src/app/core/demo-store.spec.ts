@@ -77,12 +77,16 @@ describe('simulação financeira isolada em memória', () => {
     expect(() => store.saveUser({ name: 'Outra pessoa', email: 'outro@example.test', role: 'VIEWER', active: true })).toThrow(/administrador/i);
   });
 
-  it('corrige apenas metadados com motivo e mantém o crédito original', () => {
+  it('permite ao administrador corrigir o crédito com justificativa e registra antes/depois', () => {
     const before = store.receipts().find(r => r.id === 'r2')!;
-    store.correctReceipt('r2', { type: before.type, action: before.action, expenseElement: before.expenseElement, source: before.source, object: 'Locomoção de pacientes', account: '000124-X' }, 'Detalhamento do objeto demonstrativo');
-    expect(store.receipts().find(r => r.id === 'r2')).toEqual({ ...before, object: 'Locomoção de pacientes', version: before.version + 1 });
-    expect(store.receiptAudit('r2')[0].changes).toContainEqual({ field: 'Objeto', before: 'Locomoção', after: 'Locomoção de pacientes' });
-    expect(() => store.correctReceipt('r2', { type: before.type, action: before.action, expenseElement: before.expenseElement, source: before.source, object: 'Outro', account: '000124-X' }, 'abc')).toThrow(/motivo/i);
+    store.correctReceipt('r2', { amendmentId: 'a4', type: before.type, action: before.action, expenseElement: before.expenseElement, source: before.source, object: 'Locomoção de pacientes', creditDate: '2026-05-01', account: '000124-X', amount: '320000.00' }, 'Correção conforme documento oficial');
+    expect(store.receipts().find(r => r.id === 'r2')).toMatchObject({ amendmentId: 'a4', object: 'Locomoção de pacientes', creditDate: '2026-05-01', amount: '320000.00', version: before.version + 1 });
+    expect(store.receiptAudit('r2')[0].changes).toContainEqual({ field: 'Valor recebido', before: '300000.00', after: '320000.00' });
+    expect(store.receiptAudit('r2')[0].changes).toContainEqual({ field: 'Emenda / parlamentar', before: 'Delegada Katarina · DEMO-002/2026', after: 'Yandra Moura · DEMO-004/2026' });
+    expect(() => store.correctReceipt('r2', { amount: '1.00' }, 'abc')).toThrow(/motivo/i);
+    expect(() => store.correctReceipt('r2', { amount: '10000.00' }, 'Correção do valor empenhado')).toThrow(/menor que o total já empenhado/i);
+    store.setProfile('OPERATOR');
+    expect(() => store.correctReceipt('r2', { object: 'Alteração' }, 'Motivo suficiente')).toThrow(/administrador/i);
   });
 
   it('não desativa o último administrador e valida unicidade dos cadastros', () => {

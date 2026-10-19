@@ -27,7 +27,7 @@ export const routes: Routes = [
   {
     path: 'recebimentos/:id/corrigir',
     title: 'Corrigir recebimento · Emendas',
-    canActivate: [sessionGuard, writeGuard],
+    canActivate: [sessionGuard, adminGuard],
     canDeactivate: [unsavedGuard],
     loadComponent: () => import('./features/receipts/receipt-form').then((m) => m.ReceiptForm),
   },

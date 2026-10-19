@@ -151,13 +151,24 @@ public class PostgresFundingStore implements FundingStore {
   }
 
   public boolean update(UUID id, FundingService.EditReceipt r) {
+    jdbc.sql("SELECT set_config('app.receipt_correction', 'allowed', true)").query(String.class).single();
     return jdbc.sql(
                 "UPDATE funding.receipts SET"
-                    + " type=?,source=?,action=?,expense_element=?,object=?,bank_account=?,version=version+1"
+                    + " amendment_id=?,type=?,source=?,action=?,expense_element=?,object=?,credit_date=?,bank_account=?,amount=?,version=version+1"
                     + " WHERE id=? AND version=?")
             .params(
-                r.type(), r.source(), r.action(), r.expenseElement(), r.object(), r.bankAccount(), id, r.version())
+                r.amendmentId(), r.type(), r.source(), r.action(), r.expenseElement(), r.object(),
+                r.creditDate(), r.bankAccount(), r.amount(), id, r.version())
             .update()
         == 1;
+  }
+
+  public FundingStore.ReceiptCommitments receiptCommitments(UUID id) {
+    return jdbc.sql("SELECT COALESCE(SUM(amount),0) AS total, MIN(commitment_date) AS first_date"
+            + " FROM execution.expenses WHERE receipt_id=?")
+        .param(id)
+        .query((r, n) -> new FundingStore.ReceiptCommitments(
+            r.getBigDecimal("total"), r.getObject("first_date", LocalDate.class)))
+        .single();
   }
 }

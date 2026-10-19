@@ -115,24 +115,10 @@ class BackendIntegrationTest {
         .post("/receipts", receipt(seed.amendment, "1.00", "2025-01-10", "Outro objeto"), key)
         .expect(409);
     String path = "/receipts/" + seed.receipt;
-    var edit =
-        Map.of(
-            "type",
-            "Custeio",
-            "source",
-            "Emenda",
-            "action",
-            "APS",
-            "expense_element",
-            "3.3.90.30 - Material de consumo",
-            "object",
-            "Insumos detalhados",
-            "bank_account",
-            "00001-0",
-            "version",
-            1,
-            "reason",
-            "Correção do detalhamento");
+    var edit = new HashMap<String, Object>(
+        receipt(seed.amendment, "100000.00", "2025-01-10", "Insumos detalhados"));
+    edit.put("version", 1);
+    edit.put("reason", "Correção do detalhamento");
     admin.patch(path, edit).expect(200);
     admin.patch(path, edit).expect(409);
     assertEquals(2, admin.get(path).node().path("version").asInt());
@@ -145,6 +131,43 @@ class BackendIntegrationTest {
     assertEquals(2, audits.path("total").asInt());
     assertTrue(audits.toString().contains("Correção do detalhamento"));
     admin.post("/receipts", receipt(seed.amendment, "1.001", "2025-01-10", "Insumos")).expect(422);
+  }
+
+  @Test
+  void adminCanCorrectCreditOriginDateAndAmountWithAuditAndExecutionGuards() throws Exception {
+    var seed = seed("100000.00", "2025-01-10");
+    var otherAuthor = admin.post("/parliamentarians", Map.of("name", "Nova autora " + UUID.randomUUID()));
+    otherAuthor.expect(200);
+    var otherAmendment = admin.post("/amendments", Map.of(
+        "parliamentarian_id", otherAuthor.node().path("id").asText(),
+        "number", "CORR-" + UUID.randomUUID(), "year", 2025));
+    otherAmendment.expect(200);
+
+    var changed = new HashMap<String, Object>(receipt(
+        otherAmendment.node().path("id").asText(), "120000.00", "2025-01-10", "Objeto corrigido"));
+    changed.put("version", 1);
+    changed.put("reason", "Correção conforme espelho oficial da emenda");
+    var corrected = admin.patch("/receipts/" + seed.receipt, changed);
+    corrected.expect(200);
+    assertEquals(otherAmendment.node().path("id").asText(), corrected.node().path("amendment_id").asText());
+    assertEquals("120000.00", corrected.node().path("amount").path("value").asText());
+    assertEquals("10/01/2025", corrected.node().path("credit_date_formatted").asText());
+    assertTrue(admin.get("/audit?entity=receipt&entity_id=" + seed.receipt).node().toString()
+        .contains("Correção conforme espelho oficial da emenda"));
+
+    String expenseId = expense(seed.receipt, "40000.00", "2025-01-15");
+    var lowerValue = new HashMap<String, Object>(changed);
+    lowerValue.put("version", 2);
+    lowerValue.put("amount", "30000.00");
+    lowerValue.put("reason", "Redução solicitada após empenho");
+    admin.patch("/receipts/" + seed.receipt, lowerValue).expect(409);
+
+    var laterCredit = new HashMap<String, Object>(changed);
+    laterCredit.put("version", 2);
+    laterCredit.put("credit_date", "2025-01-20");
+    laterCredit.put("reason", "Ajuste de data solicitado");
+    admin.patch("/receipts/" + seed.receipt, laterCredit).expect(409);
+    assertNotNull(admin.get("/expenses/" + expenseId).node());
   }
 
   @Test

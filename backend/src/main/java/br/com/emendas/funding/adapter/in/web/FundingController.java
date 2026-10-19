@@ -44,12 +44,15 @@ public class FundingController {
       @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount) {}
 
   public record ReceiptEdit(
+      @NotNull UUID amendmentId,
       @NotBlank @Size(max = 100) String type,
       @NotBlank @Size(max = 160) String source,
       @NotBlank @Size(max = 200) String action,
       @NotBlank @Size(max = 200) String expenseElement,
       @NotBlank @Size(max = 2000) String object,
       @NotBlank @Size(max = 100) String bankAccount,
+      @NotNull LocalDate creditDate,
+      @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
       @Min(1) long version,
       @NotBlank @Size(min = 5, max = 2000) String reason) {}
 
@@ -148,12 +151,15 @@ public class FundingController {
     return service.update(
         id,
         new FundingService.EditReceipt(
+            r.amendmentId(),
             r.type(),
             r.source(),
             r.action(),
             r.expenseElement(),
             r.object(),
             r.bankAccount(),
+            r.creditDate(),
+            r.amount(),
             r.version(),
             r.reason()));
   }

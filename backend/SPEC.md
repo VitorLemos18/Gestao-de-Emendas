@@ -18,7 +18,7 @@ Java 21, Spring Boot 4.1.1, PostgreSQL 17, Flyway. Monólito modular com portas/
 
 ## Contrato e limites
 
-Consulte README e docs/openapi.json, gerado em execução. Prefixo /api/v1, snake_case, UUID, MoneyView, datas ISO, erros Problem Details. Listas limitadas a 200 itens por página; corpo JSON até 256 KB. Recebimentos e movimentos monetários têm no máximo 12 dígitos inteiros e 2 decimais. Motivos de correção/estorno têm 5 a 2000 caracteres. Valores/datas/origem do recebimento são imutáveis. Não existe exclusão financeira pela API.
+Consulte README e docs/openapi.json, gerado em execução. Prefixo /api/v1, snake_case, UUID, MoneyView, datas ISO, erros Problem Details. Listas limitadas a 200 itens por página; corpo JSON até 256 KB. Recebimentos e movimentos monetários têm no máximo 12 dígitos inteiros e 2 decimais. Motivos de correção/estorno têm 5 a 2000 caracteres. Correções de recebimento são exclusivas do Administrador, sempre justificadas e auditadas; a API valida impacto nos empenhos existentes. Não existe exclusão financeira pela API.
 
 Correções descritivas de recebimentos exigem versão atual e motivo. Parlamentares e emendas são criados e consultados nesta versão; não há renomeação/transferência por API. Estornos são apenas integrais; empenho não tem cancelamento nesta versão. Regras de data deste controle não são apresentadas como obrigações legais.
 

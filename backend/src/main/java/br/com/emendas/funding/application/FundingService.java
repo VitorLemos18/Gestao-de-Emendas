@@ -42,12 +42,15 @@ public class FundingService implements Funding {
       BigDecimal amount) {}
 
   public record EditReceipt(
+      UUID amendmentId,
       String type,
       String source,
       String action,
       String expenseElement,
       String object,
       String bankAccount,
+      LocalDate creditDate,
+      BigDecimal amount,
       long version,
       String reason) {}
 
@@ -209,9 +212,20 @@ public class FundingService implements Funding {
   }
 
   @Transactional
-  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+  @PreAuthorize("hasRole('ADMIN')")
   public ReceiptView update(UUID id, EditReceipt request) {
-    var before = receipt(id);
+    var before = lockReceipt(id);
+    ReceiptPolicy.validate(
+        new Money(request.amount()), request.creditDate(), request.object(), request.bankAccount());
+    if (amendments().stream().noneMatch(a -> a.id().equals(request.amendmentId())))
+      throw DomainException.missing("Emenda não encontrada.");
+    var commitments = store.receiptCommitments(id);
+    if (new Money(request.amount()).compareTo(new Money(commitments.total())) < 0)
+      throw DomainException.conflict("O novo valor não pode ser menor que o total já empenhado.");
+    if (commitments.firstCommitmentDate() != null
+        && request.creditDate().isAfter(commitments.firstCommitmentDate()))
+      throw DomainException.conflict(
+          "A nova data do crédito não pode ser posterior a um empenho já registrado.");
     if (!store.update(id, request))
       throw DomainException.conflict("Recebimento alterado. Atualize a tela antes de salvar.");
     var after = ReceiptView.of(receipt(id));
