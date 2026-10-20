@@ -184,6 +184,18 @@ export class DemoStore {
     await this.refreshBackend();
     return result.id;
   }
+  async attachAmendmentMirror(amendmentId: string, file: File): Promise<void> {
+    if (!this.api) throw new Error('Anexar o espelho exige conexão com o serviço.');
+    const form = new FormData();
+    form.append('mirror_document', file, file.name);
+    const signature = `/amendments/${amendmentId}/mirror-documents:${file.name}:${file.size}:${file.lastModified}`;
+    const key = this.pendingKeys.get(signature) ?? crypto.randomUUID();
+    this.pendingKeys.set(signature, key);
+    await this.api.postForm<ApiAmendment>(`/amendments/${amendmentId}/mirror-documents`, form,
+      { idempotencyKey: key });
+    this.pendingKeys.delete(signature);
+    await this.refreshBackend();
+  }
   async createReceipt(input: Omit<Receipt, 'id' | 'version'>): Promise<string> {
     if (!this.api) return this.addReceipt(input);
     const result = await this.command<ApiReceipt>('/receipts', {

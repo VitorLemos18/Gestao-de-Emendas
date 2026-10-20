@@ -188,6 +188,28 @@ public class FundingService implements Funding {
 
   @Transactional
   @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+  public Amendment attachAmendmentMirror(UUID amendmentId, UUID key, AmendmentMirrorPdf pdf) {
+    var amendment = amendments().stream().filter(a -> a.id().equals(amendmentId)).findFirst()
+        .orElseThrow(() -> DomainException.missing("Emenda não encontrada."));
+    return commands.execute(
+        actor.get().id(), key, "amendment.attach-mirror",
+        new NewAmendment(amendment.parliamentarianId(), amendment.number(), amendment.year(),
+            pdf.fileName(), pdf.sha256()),
+        Amendment.class,
+        () -> {
+          var info = store.insertAmendmentDocument(new AmendmentDocument(
+              UUID.randomUUID(), amendmentId, pdf.fileName(), pdf.sizeBytes(), pdf.sha256(),
+              java.time.Instant.now(), pdf.content()));
+          var result = new Amendment(amendment.id(), amendment.parliamentarianId(), amendment.number(),
+              amendment.year(), info);
+          audit.record(actor.get(), "UPDATE", "amendment", amendmentId, amendment, result,
+              "Inclusão ou atualização do espelho da emenda");
+          return result;
+        });
+  }
+
+  @Transactional
+  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
   public ReceiptView createReceipt(UUID key, NewReceipt request) {
     return commands.execute(
         actor.get().id(),

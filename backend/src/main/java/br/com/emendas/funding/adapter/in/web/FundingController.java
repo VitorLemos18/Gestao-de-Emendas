@@ -92,6 +92,20 @@ public class FundingController {
     return service.createAmendment(key, body.parliamentarianId(), body.number(), body.year(), pdf);
   }
 
+  @PostMapping(value = "/amendments/{amendmentId}/mirror-documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Amendment attachMirrorPdf(
+      @PathVariable UUID amendmentId,
+      @RequestHeader("Idempotency-Key") UUID key,
+      @RequestPart("mirror_document") MultipartFile file) {
+    AmendmentMirrorPdf pdf;
+    try {
+      pdf = AmendmentMirrorPdf.create(file.getOriginalFilename(), file.getBytes());
+    } catch (IOException error) {
+      throw DomainException.invalid("Não foi possível ler o PDF do espelho da emenda.");
+    }
+    return service.attachAmendmentMirror(amendmentId, key, pdf);
+  }
+
   @GetMapping("/amendments/{amendmentId}/mirror-documents/{documentId}")
   public ResponseEntity<byte[]> amendmentMirrorDocument(
       @PathVariable UUID amendmentId, @PathVariable UUID documentId) {

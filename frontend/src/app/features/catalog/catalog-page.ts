@@ -264,6 +264,14 @@ const FORM_IMPORTS = [
                 ><th mat-header-cell *matHeaderCellDef>Ações</th>
                 <td mat-cell *matCellDef="let amendment">
                   <button mat-button (click)="selectAmendment(amendment.id)">Ver objetos</button>
+                  @if (store.canWrite()) {
+                    <label class="mirror-replace-button">
+                      {{ amendment.mirrorDocument ? 'Atualizar PDF' : 'Anexar PDF' }}
+                      <input type="file" accept="application/pdf,.pdf"
+                        (change)="attachMirror(amendment.id, $event)"
+                        [attr.aria-label]="'Anexar ou atualizar espelho da emenda ' + amendment.number" />
+                    </label>
+                  }
                 </td></ng-container
               >
               <tr mat-header-row *matHeaderRowDef="amendmentColumns"></tr>
@@ -400,6 +408,28 @@ const FORM_IMPORTS = [
     th.numeric,
     td.numeric {
       text-align: right;
+    }
+    .mirror-replace-button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 10px;
+      color: var(--app-primary);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .mirror-replace-button input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      overflow: hidden;
+    }
+    .mirror-replace-button:focus-within {
+      outline: 2px solid var(--app-primary);
+      outline-offset: 2px;
     }
   `,
 })
@@ -539,6 +569,22 @@ export class CatalogPage {
   }
   mirrorPdfUrl(amendmentId: string, documentId: string): string {
     return `/api/v1/amendments/${amendmentId}/mirror-documents/${documentId}`;
+  }
+  async attachMirror(amendmentId: string, event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    input.value = '';
+    if (!file.name.toLocaleLowerCase('pt-BR').endsWith('.pdf') || file.size < 1 || file.size > 10 * 1024 * 1024) {
+      this.snack.open('Escolha um PDF válido de até 10 MB.', 'Fechar', { duration: 5000 });
+      return;
+    }
+    try {
+      await this.store.attachAmendmentMirror(amendmentId, file);
+      this.snack.open('Espelho da emenda anexado.', 'Fechar', { duration: 4000 });
+    } catch (error) {
+      this.snack.open(error instanceof Error ? error.message : 'Não foi possível anexar o PDF.', 'Fechar', { duration: 6000 });
+    }
   }
   showAuthor(author: Author): void {
     this.tab.set(1);
@@ -706,7 +752,7 @@ export class CatalogPage {
           >
         </div>
       </form>
-    ><mat-dialog-actions align="end"
+    <mat-dialog-actions align="end"
       ><button mat-button type="button" (click)="cancel()">Cancelar</button
       ><button mat-flat-button type="submit" form="author-form" [disabled]="saving()">
         {{ saving() ? 'Salvando…' : 'Salvar parlamentar' }}
@@ -842,8 +888,8 @@ export class CatalogAuthorDialog {
       </form>
         <section class="mirror-upload" aria-labelledby="mirror-upload-title">
           <div class="mirror-upload-copy">
-            <strong id="mirror-upload-title">Espelho da emenda (PDF) <span aria-hidden="true">*</span></strong>
-            <p>Anexe o documento oficial da proposta. Tamanho máximo: 10 MB.</p>
+            <strong id="mirror-upload-title">Espelho da emenda (PDF) <span class="optional-label">Opcional</span></strong>
+            <p>Você pode anexar o documento oficial agora ou incluí-lo depois. Tamanho máximo: 10 MB.</p>
           </div>
           <label class="mirror-file-button">
             <input
@@ -874,7 +920,7 @@ export class CatalogAuthorDialog {
   styles: [`
     .mirror-upload { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 16px; align-items:center; margin:8px 0 4px; padding:14px 16px; border:1px solid var(--app-line); border-radius:8px; background:var(--app-surface-soft, #f7f9fb); }
     .mirror-upload-copy strong { color:var(--app-text); font-size:13px; font-weight:500; }
-    .mirror-upload-copy strong span { color:var(--app-danger, #b42318); }
+    .mirror-upload-copy strong .optional-label { margin-left:6px; color:var(--app-muted); font-size:11px; font-weight:400; }
     .mirror-upload-copy p { margin:4px 0 0; color:var(--app-muted); font-size:12px; }
     .mirror-file-button { position:relative; display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:0 14px; border:1px solid var(--app-primary); border-radius:4px; color:var(--app-primary); background:#fff; font-size:13px; font-weight:500; cursor:pointer; overflow:hidden; }
     .mirror-file-button input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
@@ -993,11 +1039,6 @@ export class CatalogAmendmentDialog {
       this.element.nativeElement.querySelector<HTMLInputElement>('input.ng-invalid')?.focus();
       return;
     }
-    if (!this.mirrorPdf()) {
-      this.mirrorPdfError.set('Anexe o espelho da emenda em PDF para continuar.');
-      this.element.nativeElement.querySelector<HTMLInputElement>('input[type="file"]')?.focus();
-      return;
-    }
     const value = this.form.getRawValue();
     if (!value.author || typeof value.author === 'string') return;
     this.saving.set(true);
@@ -1007,7 +1048,7 @@ export class CatalogAmendmentDialog {
         number: value.number.trim(),
         year: value.year,
         description: '',
-      }, this.mirrorPdf()!));
+      }, this.mirrorPdf() ?? undefined));
     } catch (error) {
       this.error.set(
         error instanceof Error ? error.message : 'Não foi possível cadastrar a emenda.',
